@@ -1,0 +1,225 @@
+#!/bin/sh
+
+# tiny configure script for jkSMS
+# Copyright (c) Jeremy Kister 2016
+# http://github.com/jkister/jkSMS/
+# http://jeremy.kister.net/
+
+VERSION=20160315.01
+
+echo " "
+
+while test $# -gt 0 ; do
+    case $1 in 
+        --*=*) arg=`echo $1 | sed 's/.*=//'` ;;
+        *) arg= ;;
+    esac
+
+    case $1 in
+        --help)
+            cat <<EOM
+the following syntax to ./configure is supported:
+
+   --prefix=PREFIX      install architecture-independent files in PREFIX
+                           [/usr/local]
+   --piddir=DIR         jkSMS daemon PID file [/var/run]
+   --scriptdir=DIR      jkSMS script [PREFIX/script]
+   --agidir=DIR         jkSMS AGI program [/var/lib/asterisk/agi-bin]
+   --perl=PERL          full path to perl [/usr/bin/perl]
+   --help               show help message
+
+EOM
+            exit;
+            ;;
+        --perl*)
+            if [ "$arg" ]; then
+                if [ -x "$arg" ] ; then
+                    PERL=$arg
+                else
+                    echo "*** PERL: $arg is not executable"
+                    exit 1
+                fi
+            fi
+            ;;
+        --piddir*)
+            if [ "$arg" ]; then
+                if [ -x "$arg" ] ; then
+                    PIDDIR=$arg
+                else
+                    echo "*** PIDDIR: $arg is not executable"
+                    exit 1
+                fi
+            fi
+            ;;
+        --prefix*)
+            if [ "$arg" ]; then
+                if [ -d "$arg" ] ; then
+                    PREFIX=$arg
+                else
+                    echo "*** PREFIX: $arg is not a directory"
+                    exit 1
+                fi
+            fi
+            ;;
+        --scriptdir*)
+            if [ "$arg" ]; then
+                if [ -d "$arg" ] ; then
+                    SCRIPTDIR=$arg
+                else
+                    echo "*** SCRIPTDIR: $arg is not a directory"
+                    exit 1
+                fi
+            fi
+            ;;
+        --agidir*)
+            if [ "$arg" ]; then
+                if [ -d "$arg" ] ; then
+                    AGIDIR=$arg
+                else
+                    echo "*** AGIDIR: $arg is not a directory"
+                    exit 1
+                fi
+            fi
+            ;;
+        *)
+            echo "unknown argument: $1"
+            exit 1
+	;;
+	esac
+	shift
+done
+
+
+if [ ! -x "$PERL" ] ; then
+	for dir in /usr/bin /usr/local/bin /bin ; do
+		if test -f $dir/perl ; then
+			PERL=$dir/perl
+			break
+		fi
+	done
+	if [ ! -x "$PERL" ] ; then
+		echo "could not find perl: specify --perl="
+		exit 1
+	fi
+fi
+
+if [ ! "$PREFIX" ] ; then
+    PREFIX="/usr/local"
+fi
+if [ ! "$PIDDIR" ] ; then
+    PIDDIR="/var/run"
+fi
+if [ ! "$SCRIPTDIR" ] ; then
+    SCRIPTDIR="$PREFIX/script"
+fi
+if [ ! "$AGIDIR" ] ; then
+    AGIDIR="/var/lib/asterisk/agi-bin"
+fi
+
+
+echo "found perl: $PERL"
+
+for mod in DBI Asterisk::AGI Asterisk::AMI Net::CIDR::Lite Sys::SigAction ; do
+    $PERL -e "use $mod";
+    if [ "$?" != 0 ] ; then
+        echo "cannot find perl module $module"
+        echo ""
+        echo 'Install perl prerequisites via CPAN, apt, yum, or ... - then try ./configure again.'
+        exit 1
+    fi
+done
+
+cat <<EOM
+
+jksmsd will be installed in: $SCRIPTDIR
+jksmsd PID file will be in: $PIDDIR
+jksms-in.pl will be installed in: $SCRIPTDIR
+jksms.agi will be installed in: $AGIDIR
+ 
+if any of these values need changing, try ./configure --help
+ 
+
+Making sure this package is intact..
+EOM
+
+for file in src/*.pl ; do
+    $PERL -wTc $file
+    if [ $? != 0 ] ; then
+        echo "problem with package - check Perl modules or re-download from http://jeremy.kister.net./code/asterisk/jkSMS/"
+        exit 1
+    fi
+done
+
+echo "...done."
+
+echo "Writing Makefile..."
+
+cat <<__EOM__ > Makefile
+
+VERSION=$VERSION
+PERL=$PERL
+PIDDIR=$PIDDIR
+SCRIPTDIR=$SCRIPTDIR
+AGIDIR=$AGIDIR
+
+SEDARG=s~__PIDDIR__~\$(PIDDIR)~g;   s~__SCRIPTDIR__~\$(SCRIPTDIR)~g; \
+       s~__VERSION__~\$(VERSION)~g; s~__PERL__~\$(PERL)~g;
+
+
+BUILD = built/jksmsd built/jksms.agi built/jksms-in.pl built/rc.jksmsd
+CLEAN = \$(BUILD) Makefile
+PRE = Makefile built
+
+all: \$(BUILD) text
+
+built:
+	-mkdir built
+
+text:
+	@echo
+	@echo build complete.
+	@echo now run \'make install\'
+
+
+built/rc.jksmsd: \$(PRE) src/rc.jksmsd
+	@sed "\$(SEDARG)" src/rc.jksmsd > built/rc.jksmsd
+	@chmod a+x built/rc.jksmsd
+
+built/jksmsd: \$(PRE) src/jksmsd.pl
+	@sed "\$(SEDARG)" src/jksmsd.pl > built/jksmsd
+	@chmod a+x built/jksmsd
+
+built/jksms.agi: \$(PRE) src/jksms.agi.pl
+	@sed "\$(SEDARG)" src/jksms.agi.pl > built/jksms.agi
+	@chmod a+x built/jksms.agi
+
+built/jksms-in.pl: \$(PRE) src/jksms-in.pl
+	@sed "\$(SEDARG)" src/jksms-in.pl > built/jksms-in.pl
+	@chmod a+x built/jksms-in.pl
+
+
+install: \$(BUILD)
+	-mkdir -p \$(SCRIPTDIR)
+	-mkdir -p \$(AGIDIR)
+
+	cp built/jksmsd      \$(SCRIPTDIR)/
+	cp built/jksms-in.pl \$(SCRIPTDIR)/
+	cp built/jksms.agi   \$(AGIDIR)/
+
+	cp built/rc.jksmsd   /etc/init.d/jksmsd
+	ln -f -s /etc/init.d/jksmsd /etc/rc2.d/S94jksmsd
+	ln -f -s /etc/init.d/jksmsd /etc/rc3.d/S94jksmsd
+	ln -f -s /etc/init.d/jksmsd /etc/rc4.d/S94jksmsd
+	ln -f -s /etc/init.d/jksmsd /etc/rc5.d/S94jksmsd
+	ln -f -s /etc/init.d/jksmsd /etc/rc0.d/K28jksmsd
+	ln -f -s /etc/init.d/jksmsd /etc/rc5.d/K28jksmsd
+	ln -f -s /etc/init.d/jksmsd /etc/rc6.d/K28jksmsd
+	
+clean:
+	-rm \$(CLEAN)
+
+__EOM__
+
+
+echo " "
+echo "now type 'make' and then 'make install'"

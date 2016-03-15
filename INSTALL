@@ -1,0 +1,69 @@
+
+
+./configure
+make
+make install
+
+Then:
+
+1. make email pipe into jksms-in.pl
+   e.g., with qmail/vpopmail:
+    # ( echo "peer: asterisk.example.com"
+    #   echo "name: 2155551212@mobile.example.net=john"
+    #   echo "name: 6105551212@mobile.example.net=kate"
+    #  ) > /etc/jksms.cfg
+    # cp built/jksms-in.pl /usr/local/script
+    # echo '| /usr/local/script/jksms-in.pl' > ~vpopmail/domains/example.com/.qmail-sms
+    # chown vpopmail:vchkpw !$
+    # chmod ugo+x /usr/local/script/jksms-in.pl
+    # cpan Sys::SigAction
+
+   should work fine with other MTAs, might need to modify $ENV{SENDER}
+   in jksms-in.pl to find the envelope sender address.
+
+   *NOTE: jksms-in.pl does not need to live on the same system as your
+   Asterisk box.  there's a special socket created between jksms-in.pl
+   and jksmsd for this.  My jksms-in.pl is installed on my mail server
+   at a colo; my jksmsd is installed on my Asterisk box at my house. On
+   a separate box, jksms-in.pl only requires the Sys::SigAction module.
+   
+
+2. hook jksms.agi to Asterisk
+   e.g., with asterisk + swift (cepstral):
+    # cat contrib/extensions.conf >> /etc/asterisk/extensions.conf
+    # vi /etc/asterisk/extensions.conf
+      hook some dial code to the texts context, e.g.,
+      [extensions]
+      exten => *0,1,Goto(texts,s,1)
+    # asterisk -rx 'dialplan reload'
+
+
+3. set up config file on your Asterisk box
+   make sure your 'allowed' range includes your mail server
+    # cat <<__EOCONFIG__ > /etc/jksms.cfg
+username: user_from_manager.conf
+secret:   secret_from_manager.conf
+dsn:      DBI:SQLite:dbname=/var/sql/jksms/jksms.db
+dbun:
+dbpw:
+channel:  Local/q*@intercom
+allow:    10.0.0.0/24,192.168.1.5/32
+context:  tts
+exten:    s
+priority: 1
+dialcode: *0
+from: sms@example.com
+name: 2155551212@mobile.example.net=john
+name: 6105551212@mobile.example.net=kate
+__EOCONFIG__
+    # chown nobody /etc/jksms.cfg
+    # chmod 0400 /etc/jksms.cfg
+
+
+4. start up jksmsd
+    # /etc/init.d/jksmsd start
+
+5. watch the logs
+    # tail -f /var/log/local6.log
+
+

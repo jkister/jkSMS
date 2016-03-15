@@ -1,0 +1,72 @@
+
+jkSMS
+Copyright (c) 2016 Jeremy Kister
+
+DESCRIPTION:
+ Lets you send a text from a mobile phone to an email address like
+ sms@example.com.  the email is manipulated a bit, and data is sent
+ to your asterisk box.  the asterisk box uses Page to announce to
+ your phones that there is a queued text waiting from someone.
+
+ Someone goes over to the phone, and dials a code you make up (i use *0)
+ which connects them to the jkSMS AGI script.  The AGI script has a
+ voicemail like functionality and lets you go listen to, reply to
+ ("yes" or "no"), replay or delete the message(s).  You'll be re-alerted
+ every 5 minutes that there's a text message waiting to be heard.
+
+ I created this because my kids have an unlimited sms plan but pay for 
+ minutes.  since they use text almost exclusively anyway, it made sense
+ to build this little interface so they can just text the house and i
+ don't need to worry about keeping my cell phone attached to my hip.
+
+
+ this package makes use of the following perl modules:
+     DBI Asterisk::AGI Asterisk::AMI Net::CIDR::Lite Sys::SigAction
+ run ./contrib/get_cpan_modules to install/upgrade them automatically
+
+
+ the AGI makes use of Swift (Cepstral).  if you don't have Swift, you
+ can use lots of other tts solutions, like festival.
+
+ we also require a database.  SQLite3, mysql, postgres, oracle and
+ mssql are completely compatible.  make sure the Perl module for
+ your desired database is installed, and set the dsn/dbun/dbpw in
+ /etc/jksms.cfg
+
+
+ if you're behind NAT or a firewall and you are not running your MTA
+ on your Asterisk box, you'll need to open up port 6929/tcp from your
+ mail server to your Asterisk box.  the server that listens on port
+ 6929 is security concious - it drops root privileges as before it
+ takes network connections and has a sense of who's allowed to connect
+ vs who's not via the 'allowed' directive in /etc/jksms.cfg
+
+
+
+Notes:
+
+I have an intercom context that looks like:
+[globals]
+INTERCOM=SIP/123&SIP/124&SIP/125&SIP/126
+
+[intercom]
+exten => q*,1,SIPAddHeader(Alert-Info: Ring Answer)
+exten => q*,2,Page(${INTERCOM},iq)
+
+
+this allows asterisk to dial "Local/q*@intercom" which will Page
+all my phones - they'll go off hook on speakerphone and then 
+Swift will kick in and start reading off the TTS.
+
+
+my manager.conf looks like:
+[localuser1]
+secret = jja3$gSFgldsfg@
+deny=0.0.0.0/0.0.0.0
+permit=127.0.0.0/255.0.0.0
+read = call,log,verbose,dtmf,dialplan
+write = command,originate
+
+* NOTE: don't use a pound (#) in your secret.  this code treats the #
+        as a comment in the /etc/jksms.conf and will strips them out.  
+

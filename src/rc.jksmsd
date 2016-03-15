@@ -1,0 +1,29 @@
+#!/bin/sh -e
+
+# jkSMS v__VERSION__
+# Copyright (c) Jeremy Kister 2016
+# Released under Perl's Artistic License
+
+case "$1" in
+  start)
+    echo -n "Starting jkSMS: "
+    __SCRIPTDIR__/jksmsd
+    echo "jksmsd."
+    ;;
+  stop)
+    echo -n "Stopping jkSMS "
+    kill `head -1 __PIDDIR__/jksmsd.pid`
+    echo "jksmsd."
+    ;;
+  restart)
+    $0 stop
+    sleep 2
+    $0 start
+    ;;
+  *)
+    echo "Usage: /etc/init.d/jksmsd {start|stop|restart}"
+    exit 1
+esac
+
+exit 0
+
